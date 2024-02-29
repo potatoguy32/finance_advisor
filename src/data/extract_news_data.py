@@ -21,9 +21,7 @@ def extract_marketaux_news():
     with open(INTERIM_DATA_FOLDER_PATH.joinpath('latest_config.json'), "r") as f:
         last_config = json.load(f)
         
-    reference_store = get_reference_to_fill()
-    start_date = datetime.datetime(2021, 1, 1)
-    # end_date = datetime.datetime.today()
+    reference_store, start_date = get_reference_to_fill()
     end_date = datetime.datetime(2023, 12, 31)
     date_range = [(start_date + datetime.timedelta(days=x)).strftime("%Y-%m-%d") for x in range(1, (end_date - start_date).days)]
 
@@ -129,8 +127,10 @@ def get_reference_to_fill():
 
     # End of the reference store
     if reached_last_date and reached_last_company and reached_last_etf:
-        return reference_store
+        start_date = datetime.datetime(2021, 1, 1)
+        return reference_store, start_date
 
+    start_date = last_date
     for etf in listed_etfs[:listed_etfs.index(last_etf)]:
         reference_store.pop(etf)
 
@@ -142,9 +142,10 @@ def get_reference_to_fill():
         if datetime.datetime.strptime(date, '%Y-%m-%d') == last_date:
             break
         
-    return reference_store
+    return reference_store, start_date
 
 if __name__ == "__main__":
+    print("Extracting data...")
     marketaux_response = extract_marketaux_news()
     if marketaux_response is None:
         sys.exit("No data returned")
@@ -153,14 +154,16 @@ if __name__ == "__main__":
     with open(INTERIM_DATA_FOLDER_PATH.joinpath('reference_store.json'), "r") as f:
         reference_store = json.load(f)
     
+    print("Updating reference store...")
     for etf, company_dict in latest_reference_store.items():
         for company, news_dict in company_dict.items():
             reference_store[etf][company].update(news_dict)
     
-    with open(INTERIM_DATA_FOLDER_PATH.joinpath('reference_store_aber.json'), "w") as f:
+    print("Writing new info...")
+    with open(INTERIM_DATA_FOLDER_PATH.joinpath('reference_store.json'), "w") as f:
         json.dump(reference_store, f)
 
-    with open(INTERIM_DATA_FOLDER_PATH.joinpath('latest_config_aber.json'), "w") as f:
+    with open(INTERIM_DATA_FOLDER_PATH.joinpath('latest_config.json'), "w") as f:
         json.dump(last_config, f)
 
     print("Reference files written.")
