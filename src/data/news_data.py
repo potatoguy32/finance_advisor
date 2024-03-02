@@ -1,3 +1,4 @@
+# Python base modules
 import requests
 import datetime
 import os
@@ -6,9 +7,15 @@ import itertools
 import json
 import pathlib
 import time
+import sqlite3
 
+# Python external (installed) modules
 from retry import retry
 from dotenv import load_dotenv
+import pandas as pd
+
+# Projct (local) modules
+import CRUD
 
 
 # Load environment variables
@@ -30,7 +37,7 @@ def extract_marketaux_news():
                                             reference_store[etf].keys(),
                                             date_range) if (entry[1] in reference_store[entry[0]].keys())
             ] for etf in reference_store.keys()] for x in l)
-
+    db_data = []
     for etf_symbol, company_symbol, date in configs:
         try:
             response_dict = get_marketaux_news(company_symbol, date)
@@ -41,7 +48,7 @@ def extract_marketaux_news():
         
         if response_dict == 1:
             print("No API calls left.")
-            return  reference_store, last_config
+            return reference_store, last_config, db_data
             
         if (response_dict is None) or (response_dict['meta']['found'] == 0):
             continue
@@ -77,8 +84,25 @@ def extract_marketaux_news():
             'date': date,
             'metadata': response_metadata,
         }
+        if len(response_data) == 0:
+            continue
+        
+        for element in response_data:
+            if isinstance(element, list):
+                continue
+            
+            db_data.append((
+                etf_symbol,
+                company_symbol,
+                date,
+                element['uuid'],    
+                element['title'],
+                element['description'],
+                element['entities'][0]['match_score'],
+                element['entities'][0]['sentiment_score'],
+        ))
     
-    return reference_store, last_config
+    return reference_store, last_config, db_data
     
 
 @retry(ConnectionError, delay=60, tries=3)
@@ -141,8 +165,9 @@ def get_reference_to_fill():
         reference_store[last_etf][last_company].pop(date)
         if datetime.datetime.strptime(date, '%Y-%m-%d') == last_date:
             break
-        
+    
     return reference_store, start_date
+
 
 if __name__ == "__main__":
     print("Extracting data...")
@@ -150,7 +175,7 @@ if __name__ == "__main__":
     if marketaux_response is None:
         sys.exit("No data returned")
     
-    latest_reference_store, last_config = marketaux_response
+    latest_reference_store, last_config, db_data = marketaux_response
     with open(INTERIM_DATA_FOLDER_PATH.joinpath('reference_store.json'), "r") as f:
         reference_store = json.load(f)
     
@@ -165,5 +190,18 @@ if __name__ == "__main__":
 
     with open(INTERIM_DATA_FOLDER_PATH.joinpath('latest_config.json'), "w") as f:
         json.dump(last_config, f)
-
-    print("Reference files written.")
+    
+    print("De duplicating db data...")
+    db_entries_generator = (
+        pd.DataFrame(db_data, columns=['etf_symbol', 'company_symbol', 'date', 'uuid', 'title', 'summary', 'match_score', 'sentiment_score'])
+        .drop_duplicates(subset=['etf_symbol', 'company_symbol', 'date', 'title', 'summary', 'match_score', 'sentiment_score'])
+        .reset_index(drop=True)
+        .itertuples(index=False, name=None)
+        )
+    
+    db_entries = [entry for entry in db_entries_generator]
+    print("Reference files written. Writing {} entries in database...".format(len(db_data)))
+    with sqlite3.connect("src/data/finance_advisor_database.db") as conn:
+        CRUD.load_news_data(conn, db_entries)
+    
+    print("Database updated")

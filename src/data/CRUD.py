@@ -1,38 +1,27 @@
-import sqlite3
-
-
-def create_db():
+def create_db(connection):
     # Create (connect) database
-    conn = sqlite3.connect("finance_advisor_db.db")
-    cur = conn.cursor()
+    cur = connection.cursor()
 
     # Create users and passwords tables
     cur.execute("""
     CREATE TABLE IF NOT EXISTS news (
         etf_symbol TEXT NOT NULL,
         company_symbol TEXT NOT NULL,
-        
-        
-        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL,
-        master_password TEXT NOT NULL
+        date TIMESTAMP NOT NULL,
+        uuid TEXT,
+        title TEXT,
+        description TEXT,
+        match_score FLOAT,
+        sentiment_score FLOAT,
+        PRIMARY KEY(etf_symbol, company_symbol, date, uuid)
     );
     """)
+    connection.commit()
+    return
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS Passwords(
-        pass_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        site TEXT,
-        url TEXT,
-        email TEXT,
-        site_username TEXT,
-        password TEXT NOT NULL
-    );
-    """)
-
-    # Commit changes
-    conn.commit()
-    # Close database
-    conn.close()
+def load_news_data(connection, data):
+    create_db(connection=connection)
+    cur = connection.cursor()
+    cur.executemany("""INSERT INTO news VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", data)
+    connection.commit()
     return
