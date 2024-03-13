@@ -39,6 +39,13 @@ def extract_marketaux_news():
             ] for etf in reference_store.keys()] for x in l)
     db_data = []
     for etf_symbol, company_symbol, date in configs:
+        if date in reference_store[etf_symbol][company_symbol].keys():
+            last_config["etf"] = etf_symbol
+            last_config["company"] = company_symbol
+            last_config["date"] = date
+            last_config["metadata"] = {}
+            continue
+        
         try:
             response_dict = get_marketaux_news(company_symbol, date)
             time.sleep(2)
@@ -51,6 +58,10 @@ def extract_marketaux_news():
             return reference_store, last_config, db_data
             
         if (response_dict is None) or (response_dict['meta']['found'] == 0):
+            last_config["etf"] = etf_symbol
+            last_config["company"] = company_symbol
+            last_config["date"] = date
+            last_config["metadata"] = {} 
             continue
         
         response_metadata = response_dict['meta']
@@ -160,11 +171,6 @@ def get_reference_to_fill():
 
     for company in listed_companies[: listed_companies.index(last_company)]:
         reference_store[last_etf].pop(company)
-
-    for date in list(reference_store[last_etf][last_company].keys()):
-        reference_store[last_etf][last_company].pop(date)
-        if datetime.datetime.strptime(date, '%Y-%m-%d') == last_date:
-            break
     
     return reference_store, start_date
 
